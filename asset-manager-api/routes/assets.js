@@ -28,9 +28,23 @@ router.post('/', (req, res) => {
 
 // 자산 목록 조회 (SELECT)
 router.get('/', (req, res) => {
-  const stmt = db.prepare('SELECT * FROM assets ORDER BY created_at DESC')
-  const rows = stmt.all()
-  res.json(rows)
+  const { type } = req.query
+  let query = 'SELECT * FROM assets_master'
+  const params = []
+
+  if (type) {
+    query += ' WHERE type = ?'
+    params.push(type)
+  }
+
+  try {
+    const stmt = db.prepare(query)
+    const rows = stmt.all(...params)
+    res.json(rows)
+  } catch (err) {
+    console.error('자산 조회 실패:', err)
+    res.status(500).json({ message: '자산 조회 중 오류 발생' })
+  }
 })
 
 export default router

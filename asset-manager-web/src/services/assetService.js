@@ -6,3 +6,7 @@ const api = axios.create({
 
 export const createAsset = (asset) => api.post('/assets', asset)
 export const getAssets = () => api.get('/assets')
+
+export const fetchAssets = (type = 'stock') => {
+  return api.get('/assets', { params: { type } })
+}

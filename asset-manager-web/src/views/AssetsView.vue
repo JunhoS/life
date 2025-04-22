@@ -1,8 +1,9 @@
 <template>
     <div>
-      <AssetForm />
+      <AssetGrid />
+      <!-- <AssetForm />
       <AssetList />
-      <AssetChart />
+      <AssetChart /> -->
     </div>
   </template>
 
@@ -12,6 +13,7 @@
   import AssetForm from '@/components/AssetForm.vue'
   import AssetList from '@/components/AssetList.vue'
   import AssetChart from '@/components/AssetChart.vue'
+  import AssetGrid from '@/components/AssetGrid.vue'
   
   const portfolio = usePortfolioStore()
   
