@@ -2,7 +2,8 @@
   <div id="app">
     <nav class="nav">
       <router-link to="/">📊 대시보드</router-link> |
-      <router-link to="/assets">💰 자산</router-link>
+      <router-link to="/assets">💰 자산</router-link> |
+      <router-link to="/portfolio"> 포트폴리오</router-link>
     </nav>
 
     <main>
