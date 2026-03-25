@@ -2,7 +2,7 @@ import express from 'express'
 import db from '../db/db.js'
 import { collectFinancials, collectAuditOpinions, saveCompanies, collectCorpCodes } from '../services/collector.js'
 import { invalidateCache } from '../services/accountMapper.js'
-import { rateLimiter } from '../services/dartApi.js'
+import { rateLimiter, fetchCorpClsByMarket } from '../services/dartApi.js'
 
 const router = express.Router()
 
@@ -72,14 +72,27 @@ router.post('/companies', async (req, res) => {
 })
 
 // POST /collect/financials — 재무제표 배치 수집
+// body: { year, report_code?, fs_div?, offset?, batch_size? }
+// offset: 시작 인덱스 (기본 0), batch_size: 처리할 기업 수 (기본 전체)
+// 예시: { year: 2024, offset: 0, batch_size: 1000 }   → 1~1000번
+//       { year: 2024, offset: 1000, batch_size: 1000 } → 1001~2000번
 router.post('/financials', async (req, res) => {
-  const { year, report_code = '11011', fs_div = 'CFS' } = req.body
+  const { year, report_code = '11011', fs_div = 'CFS', offset = 0, batch_size } = req.body
   if (!year) return res.status(400).json({ message: 'year 파라미터가 필요합니다.' })
 
-  res.json({ message: `${year}년 재무제표 수집 시작 (백그라운드 실행)` })
+  const batchDesc = batch_size
+    ? `offset=${offset} ~ ${Number(offset) + Number(batch_size) - 1}`
+    : `offset=${offset} ~ 끝`
 
-  // 응답 후 백그라운드 실행 (Express 5에서는 async 라우트 에러 자동 처리됨)
-  collectFinancials({ year: Number(year), reportCode: report_code, fsDiv: fs_div }).catch((err) => {
+  res.json({ message: `${year}년 재무제표 수집 시작 (${batchDesc}, 백그라운드 실행)` })
+
+  collectFinancials({
+    year: Number(year),
+    reportCode: report_code,
+    fsDiv: fs_div,
+    offset: Number(offset),
+    batchSize: batch_size != null ? Number(batch_size) : null,
+  }).catch((err) => {
     console.error('[수집] 재무제표 오류:', err.message)
   })
 })
@@ -94,6 +107,51 @@ router.post('/audit', async (req, res) => {
   collectAuditOpinions({ year: Number(year), reportCode: report_code }).catch((err) => {
     console.error('[수집] 감사의견 오류:', err.message)
   })
+})
+
+// POST /collect/corp-cls — 시장구분(Y/K/N) 배치 업데이트
+// list.json으로 사업보고서 제출 기업을 시장별로 조회 → corps table corp_cls 갱신
+router.post('/corp-cls', async (req, res) => {
+  const { year = new Date().getFullYear() - 1 } = req.body
+  res.json({ message: `${year}년 기준 시장구분 업데이트 시작 (백그라운드)` })
+
+  ;(async () => {
+    const stmtUpdate = db.prepare('UPDATE companies SET corp_cls = ? WHERE corp_code = ?')
+    const updateMany = db.transaction((rows) => { for (const r of rows) stmtUpdate.run(r.cls, r.corp_code) })
+
+    // corp_code 없이 list.json은 3개월 제한 → 분기별로 나눠 조회
+    const y = String(year)
+    const quarters = [
+      { bgn: `${y}0101`, end: `${y}0331` },
+      { bgn: `${y}0401`, end: `${y}0630` },
+      { bgn: `${y}0701`, end: `${y}0930` },
+      { bgn: `${y}1001`, end: `${y}1231` },
+    ]
+
+    let totalUpdated = 0
+    const seen = new Set()
+    for (const cls of ['Y', 'K', 'N', 'E']) {
+      for (const { bgn, end } of quarters) {
+        let page = 1, hasMore = true
+        while (hasMore) {
+          try {
+            const data = await fetchCorpClsByMarket(cls, bgn, end, page)
+            if (!data.list?.length || data.status !== '000') { hasMore = false; break }
+            const newRows = data.list.filter((r) => !seen.has(r.corp_code))
+            newRows.forEach((r) => seen.add(r.corp_code))
+            if (newRows.length) updateMany(newRows.map((r) => ({ cls, corp_code: r.corp_code })))
+            totalUpdated += newRows.length
+            hasMore = data.list.length === 100
+            page++
+          } catch (e) {
+            console.error(`[corp_cls] ${cls} ${bgn} p${page} 오류:`, e.message)
+            hasMore = false
+          }
+        }
+      }
+    }
+    console.log(`[corp_cls] 업데이트 완료: ${totalUpdated}건`)
+  })().catch((e) => console.error('[corp_cls] 오류:', e.message))
 })
 
 // GET /collect/unmapped — 미매핑 계정과목 목록

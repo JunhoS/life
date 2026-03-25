@@ -37,15 +37,22 @@ export const saveCompanies = db.transaction((companies) => {
 // ── 재무 / 감사의견 배치 수집 ─────────────────────────────────────────
 const CHUNK_SIZE = 100  // 한 번에 처리할 종목 수 (일일 9,500건 / 30개 계정 가정)
 
-export async function collectFinancials({ year, reportCode = '11011', fsDiv = 'CFS', progressId = null } = {}) {
-  const corps = db.prepare(
+export async function collectFinancials({ year, reportCode = '11011', fsDiv = 'CFS', progressId = null, offset = 0, batchSize = null } = {}) {
+  const allCorps = db.prepare(
     "SELECT corp_code FROM companies WHERE stock_code IS NOT NULL AND stock_code != '' ORDER BY corp_code"
   ).all()
 
-  const progress = getOrCreateProgress({ task_type: 'financial', fiscal_year: year, total_corps: corps.length, progressId })
+  // offset/batchSize로 처리 범위 제한
+  const corps = batchSize != null
+    ? allCorps.slice(Number(offset), Number(offset) + Number(batchSize))
+    : allCorps.slice(Number(offset))
+
+  // task_type에 offset 인코딩 → 배치별 독립 진행 관리
+  const taskType = `financial:${offset}`
+  const progress = getOrCreateProgress({ task_type: taskType, fiscal_year: year, total_corps: allCorps.length, progressId })
   const startIdx = getResumeIndex(corps, progress.last_corp_code)
 
-  console.log(`[수집] 재무제표 시작 — ${year}년 | 대상 ${corps.length}건 | ${startIdx}번부터 이어서`)
+  console.log(`[수집] 재무제표 시작 — ${year}년 | 배치 ${corps.length}건 (전체 ${allCorps.length}건 중 offset=${offset}) | ${startIdx}번부터 이어서`)
 
   for (let i = startIdx; i < corps.length; i += CHUNK_SIZE) {
     if (rateLimiter.isDailyLimitReached()) {
@@ -58,14 +65,14 @@ export async function collectFinancials({ year, reportCode = '11011', fsDiv = 'C
     for (const { corp_code } of chunk) {
       try {
         const data = await fetchFinancials(corp_code, year, reportCode, fsDiv)
-        if (data.list) saveFinancials(corp_code, year, reportCode, fsDiv, data.list)
-        logCollection({ task_type: 'financial', corp_code, status: 'success' })
+        if (data.list) saveFinancials(corp_code, year, reportCode, fsDiv, data.list, data.corp_cls)
+        logCollection({ task_type: taskType, corp_code, status: 'success' })
       } catch (err) {
         if (err instanceof DartDailyLimitError) {
           updateProgress(progress.id, { status: 'paused', last_corp_code: corp_code })
           return { status: 'paused', processedCount: i }
         }
-        logCollection({ task_type: 'financial', corp_code, status: 'fail', error_msg: err.message })
+        logCollection({ task_type: taskType, corp_code, status: 'fail', error_msg: err.message })
       }
       updateProgress(progress.id, { processed_corps: i + 1, last_corp_code: corp_code })
     }
@@ -125,7 +132,14 @@ const stmtUpsertFinancial = db.prepare(`
     amount        = excluded.amount
 `)
 
-const saveFinancials = db.transaction((corp_code, year, report_code, fs_div, list) => {
+const stmtUpdateCorpCls = db.prepare(
+  "UPDATE companies SET corp_cls = ? WHERE corp_code = ? AND (corp_cls IS NULL OR corp_cls = '')"
+)
+
+const saveFinancials = db.transaction((corp_code, year, report_code, fs_div, list, corp_cls) => {
+  // fnlttSinglAcntAll 응답에 corp_cls 포함 → companies 테이블에 반영
+  if (corp_cls) stmtUpdateCorpCls.run(corp_cls, corp_code)
+
   for (const item of list) {
     const standard_code = getStandardCode(item.account_nm)
     if (!standard_code) recordUnmapped(item.account_nm, corp_code)
@@ -187,7 +201,7 @@ function getOrCreateProgress({ task_type, fiscal_year, total_corps, progressId }
     const row = db.prepare('SELECT * FROM collection_progress WHERE id = ?').get(progressId)
     if (row && row.status === 'paused') return row
   }
-  // 진행 중인 동일 작업이 있으면 이어받기
+  // 동일 배치(task_type + fiscal_year)의 paused 작업이 있으면 이어받기
   const existing = db.prepare(
     "SELECT * FROM collection_progress WHERE task_type = ? AND fiscal_year = ? AND status = 'paused' ORDER BY id DESC LIMIT 1"
   ).get(task_type, fiscal_year)

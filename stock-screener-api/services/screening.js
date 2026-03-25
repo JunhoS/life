@@ -35,9 +35,9 @@ export function runScreening(filters) {
   const wheres = []
   const params = []
 
-  // 감사의견 JOIN (기본 항상 포함)
+  // 감사의견 JOIN (기본 항상 포함 — LEFT JOIN으로 감사의견 없는 기업도 표시)
   joins.push(`
-    JOIN audit_opinions ao
+    LEFT JOIN audit_opinions ao
       ON c.corp_code = ao.corp_code AND ao.fiscal_year = ?
   `)
   params.push(year)

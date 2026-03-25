@@ -91,6 +91,10 @@ async function dartFetch(endpoint, params = {}, retries = 3) {
           rateLimiter.dailyUsed = rateLimiter.dailyLimit
           throw new DartDailyLimitError(`DART 일일 한도 초과: ${data.message}`)
         }
+        if (data.status === '013') {
+          // 013: 조회 데이터 없음 → 재시도해도 결과 동일, 즉시 반환
+          return data
+        }
         const delay = 2000 * Math.pow(2, attempt - 1)
         console.warn(`[DART] 에러 ${data.status} (${data.message}) — ${delay}ms 후 재시도 (${attempt}/${retries})`)
         await sleep(delay)
@@ -168,3 +172,17 @@ export async function fetchAuditReportList(corpCode, year) {
 // 하위 호환성 alias — collector.js에서 사용 (audit 수집 시 공시목록 반환)
 export const fetchAuditOpinion = fetchAuditReportList
 export const fetchAuditStatus  = fetchAuditReportList
+
+// 시장구분(corp_cls) 배치 조회
+// corp_code 없이 조회 시 최대 3개월 제한 → 분기별로 호출해야 함
+// bgn, end: 'YYYYMMDD' 형식
+export async function fetchCorpClsByMarket(corpCls, bgn, end, page = 1) {
+  return dartFetch('list.json', {
+    corp_cls: corpCls,    // Y|K|N|E
+    bgn_de: bgn,
+    end_de: end,
+    pblntf_ty: 'A',      // 정기공시
+    page_no: page,
+    page_count: 100,
+  })
+}

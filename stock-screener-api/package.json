@@ -10,6 +10,7 @@
     "test:local": "node test/local-api.test.js"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "better-sqlite3": "^11.9.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
