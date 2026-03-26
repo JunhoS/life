@@ -6,7 +6,7 @@ export default function ResultTable({ result, onPageChange }) {
 
   if (!result) return null
 
-  const { data = [], total, page, limit, fiscal_year } = result
+  const { data = [], total, page, limit } = result
 
   if (data.length === 0) {
     return <div className="empty">조건에 맞는 종목이 없습니다.</div>
@@ -18,7 +18,7 @@ export default function ResultTable({ result, onPageChange }) {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span className="text-muted" style={{ fontSize: 13 }}>
-          총 <strong style={{ color: 'var(--text)' }}>{total.toLocaleString()}</strong>건 · {fiscal_year}년 기준
+          총 <strong style={{ color: 'var(--text)' }}>{total.toLocaleString()}</strong>건 · 최신 실적 기준
         </span>
         <span className="text-muted" style={{ fontSize: 12 }}>{page} / {totalPages} 페이지</span>
       </div>
@@ -31,6 +31,7 @@ export default function ResultTable({ result, onPageChange }) {
               <th>기업명</th>
               <th>시장</th>
               <th>업종</th>
+              <th>기준연도</th>
               <th>감사의견</th>
               <th>계속기업</th>
               <th className="text-right">매출액</th>
@@ -49,6 +50,7 @@ export default function ResultTable({ result, onPageChange }) {
                   <td style={{ fontWeight: 600 }}>{row.corp_name}</td>
                   <td><span className={`badge ${market.cls}`}>{market.label}</span></td>
                   <td className="text-muted">{row.sector || '-'}</td>
+                  <td className="text-muted" style={{ fontSize: 12 }}>{row.fiscal_year ? `${row.fiscal_year}년` : '-'}</td>
                   <td><span className={`badge ${opinion.cls}`}>{opinion.label}</span></td>
                   <td>
                     {row.going_concern === 1

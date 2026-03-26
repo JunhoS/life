@@ -1,10 +1,6 @@
 import { useState } from 'react'
 
-const CURRENT_YEAR = new Date().getFullYear()
-const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - 1 - i)
-
 const DEFAULT_FILTERS = {
-  fiscal_year: CURRENT_YEAR - 1,
   corp_cls: '',
   sector: '',
   opinion: '',
@@ -15,8 +11,8 @@ const DEFAULT_FILTERS = {
   min_REVENUE_GROWTH: '',
 }
 
-export default function FilterPanel({ onSearch, loading }) {
-  const [f, setF] = useState(DEFAULT_FILTERS)
+export default function FilterPanel({ onSearch, loading, initialFilters }) {
+  const [f, setF] = useState(initialFilters ?? DEFAULT_FILTERS)
 
   const set = (key) => (e) => setF((prev) => ({ ...prev, [key]: e.target.value }))
 
@@ -34,14 +30,6 @@ export default function FilterPanel({ onSearch, loading }) {
     <div className="card">
       <form onSubmit={handleSubmit}>
         <div className="form-row">
-          {/* 기준 연도 */}
-          <div className="form-group">
-            <label>기준 연도</label>
-            <select value={f.fiscal_year} onChange={set('fiscal_year')}>
-              {YEARS.map((y) => <option key={y} value={y}>{y}년</option>)}
-            </select>
-          </div>
-
           {/* 시장 구분 */}
           <div className="form-group">
             <label>시장</label>

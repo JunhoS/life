@@ -67,6 +67,7 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_financials_corp_year ON financials(corp_code, fiscal_year);
   CREATE INDEX IF NOT EXISTS idx_financials_standard_code ON financials(standard_code);
+  CREATE INDEX IF NOT EXISTS idx_financials_lookup ON financials(corp_code, fiscal_year, standard_code, fs_div, amount);
 `)
 
 // ── 감사의견 ─────────────────────────────────────────────────────────
